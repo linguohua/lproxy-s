@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -17,6 +18,8 @@ type Request struct {
 	conn *net.TCPConn
 
 	sendSeqNo uint32
+	sendQuota uint16
+	quotaWG   *sync.WaitGroup
 }
 
 func newRequest(o *Account, idx uint16) *Request {
@@ -29,6 +32,11 @@ func (r *Request) dofree() {
 	if r.conn != nil {
 		r.conn.Close()
 		r.conn = nil
+	}
+
+	if r.quotaWG != nil {
+		r.quotaWG.Done()
+		r.quotaWG = nil
 	}
 }
 
@@ -59,7 +67,7 @@ func (r *Request) proxy() {
 		return
 	}
 
-	buf := make([]byte, 4096)
+	buf := make([]byte, 8192)
 	for {
 		n, err := c.Read(buf)
 
@@ -92,7 +100,29 @@ func (r *Request) proxy() {
 			break
 		}
 
+		// log.Println("proxy n:", n)
+
 		t.onRequestData(r, buf[:n])
+		r.sendQuota--
+
+		if r.sendQuota == 0 {
+			//log.Println("proxy, wait quota")
+			r.quotaWG = &sync.WaitGroup{}
+			r.quotaWG.Add(1)
+			r.quotaWG.Wait()
+			//log.Println("proxy, wait quota complete")
+		}
+	}
+}
+
+func (r *Request) updateQuota(quota uint16) {
+	needNotify := r.sendQuota == 0
+	r.sendQuota = r.sendQuota + quota
+
+	if needNotify && r.quotaWG != nil {
+		//log.Println("updateQuota:", quota)
+		r.quotaWG.Done()
+		r.quotaWG = nil
 	}
 }
 

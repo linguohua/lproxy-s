@@ -4,6 +4,10 @@ import (
 	"fmt"
 )
 
+const (
+	reqDataQuota = 100
+)
+
 // Reqq request queue
 type Reqq struct {
 	owner *Account
@@ -35,6 +39,7 @@ func (q *Reqq) alloc(idx uint16, tag uint16, ot *Tunnel) (*Request, error) {
 	req.isUsed = true
 	req.sendSeqNo = 0
 	req.ot = ot
+	req.sendQuota = reqDataQuota
 
 	return req, nil
 }

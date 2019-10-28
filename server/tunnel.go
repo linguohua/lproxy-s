@@ -19,6 +19,7 @@ const (
 	cMDReqClientFinished = 4
 	cMDReqServerFinished = 5
 	cMDReqServerClosed   = 6
+	cMDReqClientQuota    = 7
 )
 
 // Tunnel tunnel
@@ -133,6 +134,8 @@ func (t *Tunnel) onTunnelMessage(message []byte) error {
 		t.handleRequestFinished(idx, tag)
 	case cMDReqClientClosed:
 		t.handleRequestClosed(idx, tag)
+	case cMDReqClientQuota:
+		t.handleQuotaReport(idx, tag, message[5:])
 	default:
 		log.Printf("onTunnelMessage, unsupport tunnel cmd:%d", cmd)
 	}
@@ -182,6 +185,17 @@ func (t *Tunnel) handleRequestData(idx uint16, tag uint16, message []byte) {
 	}
 
 	req.onClientData(message)
+}
+
+func (t *Tunnel) handleQuotaReport(idx uint16, tag uint16, message []byte) {
+	req, err := t.owner.reqq.get(idx, tag)
+	if err != nil {
+		log.Println("handleQuotaReport, get req failed:", err)
+		return
+	}
+
+	quota := binary.LittleEndian.Uint16(message)
+	req.updateQuota(quota)
 }
 
 func (t *Tunnel) handleRequestFinished(idx uint16, tag uint16) {
