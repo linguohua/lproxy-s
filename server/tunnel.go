@@ -110,7 +110,7 @@ func (t *Tunnel) onPong(msg []byte) {
 
 func (t *Tunnel) onClose() {
 	for _, r := range t.reqMap {
-		t.handleRequestClosed(r.idx, r.tag)
+		t.handleClientClosed(r.idx, r.tag)
 	}
 
 	t.reqMap = make(map[uint16]*Request)
@@ -131,9 +131,9 @@ func (t *Tunnel) onTunnelMessage(message []byte) error {
 	case cMDReqData:
 		t.handleRequestData(idx, tag, message[5:])
 	case cMDReqClientFinished:
-		t.handleRequestFinished(idx, tag)
+		t.handleClientFinished(idx, tag)
 	case cMDReqClientClosed:
-		t.handleRequestClosed(idx, tag)
+		t.handleClientClosed(idx, tag)
 	case cMDReqClientQuota:
 		t.handleQuotaReport(idx, tag, message[5:])
 	default:
@@ -198,22 +198,22 @@ func (t *Tunnel) handleQuotaReport(idx uint16, tag uint16, message []byte) {
 	req.updateQuota(quota)
 }
 
-func (t *Tunnel) handleRequestFinished(idx uint16, tag uint16) {
-	log.Println("handleRequestFinished, idx:", idx)
+func (t *Tunnel) handleClientFinished(idx uint16, tag uint16) {
+	log.Println("handleClientFinished, idx:", idx)
 	req, err := t.owner.reqq.get(idx, tag)
 	if err != nil {
-		log.Println("handleRequestData, get req failed:", err)
+		log.Println("handleClientFinished, get req failed:", err)
 		return
 	}
 
 	req.onClientFinished()
 }
 
-func (t *Tunnel) handleRequestClosed(idx uint16, tag uint16) {
-	log.Println("handleRequestClosed, idx:", idx)
+func (t *Tunnel) handleClientClosed(idx uint16, tag uint16) {
+	log.Println("handleClientClosed, idx:", idx)
 	err := t.owner.reqq.free(idx, tag)
 	if err != nil {
-		log.Println("handleRequestClosed, get req failed:", err)
+		log.Println("handleClientClosed, get req failed:", err)
 		return
 	}
 
@@ -222,22 +222,23 @@ func (t *Tunnel) handleRequestClosed(idx uint16, tag uint16) {
 
 func (t *Tunnel) onRequestTerminate(req *Request) {
 	// send close to client
-	buf := make([]byte, 5)
+	buf := make([]byte, 5+4)
 	buf[0] = cMDReqServerClosed
 	binary.LittleEndian.PutUint16(buf[1:], req.idx)
 	binary.LittleEndian.PutUint16(buf[3:], req.tag)
-
+	binary.LittleEndian.PutUint32(buf[5:], req.sendSeqNo)
 	t.write(buf)
 
-	t.handleRequestClosed(req.idx, req.tag)
+	t.handleClientClosed(req.idx, req.tag)
 }
 
 func (t *Tunnel) onRequestHalfClosed(req *Request) {
 	// send half-close to client
-	buf := make([]byte, 5)
+	buf := make([]byte, 5+4)
 	buf[0] = cMDReqServerFinished
 	binary.LittleEndian.PutUint16(buf[1:], req.idx)
 	binary.LittleEndian.PutUint16(buf[3:], req.tag)
+	binary.LittleEndian.PutUint32(buf[5:], req.sendSeqNo)
 
 	t.write(buf)
 }
