@@ -50,7 +50,13 @@ func (r *Request) onClientData(data []byte) {
 	if r.conn != nil {
 		err := writeAll(data, r.conn)
 		if err != nil {
-			log.Println("onClientData, write failed:", err)
+			log.Printf("req %d:%d onClientData, force close cause write failed:%v",
+				r.idx, r.tag, err)
+			ot := r.ot
+			if ot != nil {
+				// write failed, force close
+				ot.onRequestTerminate(r)
+			}
 		} else {
 			// log.Println("onClientData, write:", len(data))
 		}
@@ -73,13 +79,16 @@ func (r *Request) proxy() {
 
 		if !r.isUsed {
 			// request is free!
-			log.Println("proxy read, request is free, discard data:", n)
+			log.Printf("req %d:%d  read, request is free, discard data:%d",
+				r.idx, r.tag, n)
 			break
 		}
 
 		ot := r.ot
 		if ot == nil {
-			log.Println("proxy read, request'tunnel is free, discard data:", n)
+			log.Printf("req %d:%d  read, request'tunnel is free, discard data:%d",
+				r.idx, r.tag, n)
+			break
 		}
 
 		if err != nil {
@@ -88,6 +97,7 @@ func (r *Request) proxy() {
 			break
 		}
 
+		// golang will never return n == 0
 		if n == 0 {
 			// log.Println("proxy read, server half close")
 			ot.onRequestHalfClosed(r)
@@ -96,7 +106,8 @@ func (r *Request) proxy() {
 
 		t := r.owner.getTunnelForData()
 		if t == nil {
-			log.Println("proxy read, getTunnel nil, discard data")
+			log.Printf("req %d:%d read, getTunnel nil, discard data", r.idx, r.tag)
+			ot.onRequestHalfClosed(r)
 			break
 		}
 

@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	reqDataQuota = 100
+	reqDataQuota = 80
 )
 
 // Reqq request queue
